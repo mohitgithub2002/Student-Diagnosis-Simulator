@@ -17,9 +17,14 @@ async function staffLogin(page: Page, path: string, email: string, password: str
   await page.getByRole("button", { name: "Sign in" }).click();
 }
 
-/** Answer whatever is on screen, the way a student would, until the level is complete. */
+/**
+ * Answer whatever is on screen, the way a student would, until the level is complete.
+ * Bounded by time rather than loop count: timed tasks (card study, tap streams) run for a fixed time,
+ * so the number of polls a level needs depends on how fast the machine is.
+ */
 async function playLevel(page: Page) {
-  for (let step = 0; step < 400; step++) {
+  const deadline = Date.now() + 240_000;
+  while (Date.now() < deadline) {
     await page.waitForTimeout(200);
     if (await page.getByText("Level complete!").count()) return;
     const conf = page.locator(".conf button");
@@ -55,7 +60,8 @@ async function playLevel(page: Page) {
       if (await next.count() && await next.first().isEnabled()) await next.first().click();
     }
   }
-  throw new Error("level did not finish");
+  const screen = (await page.locator("body").innerText()).replace(/\s+/g, " ").slice(0, 300);
+  throw new Error(`level did not finish; screen shows: ${screen}`);
 }
 
 test("a student plays level 1 and the answers reach the server", async ({ page }) => {
