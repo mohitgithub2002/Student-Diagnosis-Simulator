@@ -1,0 +1,15 @@
+{
+  "name": "student-diagnostic-simulator",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Game-like assessment that profiles how students aged 11-18 think, learn and handle pressure",
+  "workspaces": [
+    "packages/*",
+    "apps/web"
+  ],
+  "scripts": {
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present"
+  }
+}

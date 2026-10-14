@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+build/
+.expo/
+web-build/
+*.tsbuildinfo
+playwright-report/
+test-results/
+
+# Vosk speech models are downloaded on demand (scripts/fetch-vosk-models.sh), never committed
+apps/web/public/models/
+
+# Local env
+.env
+.env.local
+*.log
+.DS_Store
