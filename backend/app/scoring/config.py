@@ -188,6 +188,7 @@ THRESHOLDS: dict = {
     "growth_min_events": 3,
     "pressure_drop_threshold": 0.15,  # PILOT
     "language_gap_threshold": 0.15,  # PILOT
+    "language_gap_min_items": 2,  # at least this many more matched items right in Hindi/Hinglish
     "language_adjust_factor": 0.5,  # PILOT
     "language_adjusted_skills": ["reading_fluency", "reading_comprehension", "vocabulary", "expression"],
     "mismatch_gap": 0.15,

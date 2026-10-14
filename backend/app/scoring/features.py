@@ -435,7 +435,8 @@ def t23_features(c: Collector, s: int, events: list[Event]) -> dict | None:
     rt_nat = median(e["response_ms"] for e in nat_m if e.get("response_ms"))
     if rt_en and rt_nat:
         c.add(s, "t23.rt_ratio_inv", rt_nat / rt_en, task="T23")
-    return {"gap": gap, "en": a_en, "native": a_nat, "n": len(en_m)}
+    n_items = min(len(en_m), len(nat_m))
+    return {"gap": gap, "en": a_en, "native": a_nat, "n": n_items, "item_diff": round(gap * n_items)}
 
 
 def rubric(
@@ -486,8 +487,12 @@ def text_task_features(c: Collector, s: int, task: str, events: list[Event], cli
         words.append(wc)
         if "unique_ratio" in f:
             uniq.append(f["unique_ratio"])
-        kw = f.get("keyword_share") if task == "T11" else None
-        rubrics.append(rubric(wc, kw, f.get("connectors", 0), f.get("avg_sentence_words", wc), f.get("filler_rate", 0)))
+        # A spoken answer without speech-to-text has only an estimated word count: no word-based rubric.
+        if channel_of.get(item_id) != "voice_vad":
+            kw = f.get("keyword_share") if task == "T11" else None
+            rubrics.append(
+                rubric(wc, kw, f.get("connectors", 0), f.get("avg_sentence_words", wc), f.get("filler_rate", 0))
+            )
         if "pause_rate" in f:
             pauses.append(f["pause_rate"])
         if "speech_start_ms" in f:

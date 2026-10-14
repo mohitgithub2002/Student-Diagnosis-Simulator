@@ -104,7 +104,12 @@ def score(inputs: dict[str, Any], config: dict | None = None, version: str = "")
     t23 = ctx.get("t23")
     language_gap = t23["gap"] if t23 else None
     text_lang = inputs.get("text_language", "en")
-    adjusted = bool(language_gap is not None and language_gap > th["language_gap_threshold"] and text_lang == "en")
+    adjusted = bool(
+        language_gap is not None
+        and language_gap > th["language_gap_threshold"]
+        and t23["item_diff"] >= th["language_gap_min_items"]
+        and text_lang == "en"
+    )
     if adjusted:
         for skill in th["language_adjusted_skills"]:
             s = skills[skill]
@@ -321,6 +326,4 @@ def _screening_cues(agg, ctx, th, skills, cfg_features, band) -> dict[str, list[
         cues["study_consistency"].append("reports_daily_no_returns")
     if v("t22.voice_share") is not None and v("t22.voice_share") < 0.3 and (v("t22.answered_rate") or 0) > 0.5:
         cues["communication"].append("prefers_typing")
-    if v("t11.voice_share") is not None and v("t22.voice_share") is not None:
-        cues["expression"].append("prefers_speaking" if v("t22.voice_share") >= 0.5 else "prefers_typing")
     return dict(cues)

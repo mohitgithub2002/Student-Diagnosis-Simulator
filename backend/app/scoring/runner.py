@@ -71,6 +71,7 @@ def load_inputs(db: DbSession, cycle: Cycle) -> dict[str, Any]:
                 "kind": item.content.get("kind"),
             }
         )
+    events = dedupe_replays(events)
     client = [
         {
             "session": number_of[f.session_id],
@@ -105,6 +106,17 @@ def load_inputs(db: DbSession, cycle: Cycle) -> dict[str, Any]:
         "visits": visits,
         "text_language": "en" if text_language == "en" else text_language,
     }
+
+
+def dedupe_replays(events: list[dict]) -> list[dict]:
+    """A session resumed after a break restarts its unfinished task, so a response can be logged twice.
+    Keep the latest response per (session, item, condition, question/phase/block)."""
+    latest: dict[tuple, dict] = {}
+    for e in sorted(events, key=lambda e: (e["session"], e["seq"], e["id"])):
+        ex = e["extra"]
+        key = (e["session"], e["task"], e["item_id"], e["condition"], ex.get("qid"), ex.get("phase"), ex.get("block"))
+        latest[key] = e
+    return sorted(latest.values(), key=lambda e: (e["session"], e["seq"], e["id"]))
 
 
 def score_cycle(db: DbSession, cycle_id: int) -> dict[str, Any]:

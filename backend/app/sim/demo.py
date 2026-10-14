@@ -7,18 +7,20 @@ apps. Students and phone numbers are fictional.
 """
 
 import os
+import random
 import re
-from datetime import date
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.core.db import get_sessionmaker
 from app.core.security import hash_password
-from app.models import StaffUser
+from app.models import Cycle, Report, StaffUser, Student, StudentVisit
 from app.sim.api_player import play_cycle_via_api
-from app.sim.simulator import PERSONAS
+from app.sim.simulator import PERSONAS, Persona
+from app.workers.jobs import score_and_report
 
 DEMO_ADMIN = ("admin@sunrise-demo.in", "demo-admin-123")
 DEMO_TEACHER = ("teacher@sunrise-demo.in", "demo-teacher-123")
@@ -128,7 +130,30 @@ def build_demo(students: int = 6) -> dict[str, Any]:
             ).json()["token"]
             if completes:
                 play_cycle_via_api(client, student, PERSONAS[persona], "11-14")
+                _spread_over_schedule(name, PERSONAS[persona])
         return {"message": "Demo data created", **credentials(client, admin, klass["class_code"], pins)}
+
+
+def _spread_over_schedule(name: str, persona: Persona) -> None:
+    """The demo plays all seven sessions at once; give them the dates a real cycle would have (some on the
+    planned day, some in the catch-up window, plus return visits between sessions), then rescore."""
+    rng = random.Random(name)
+    with get_sessionmaker()() as db:
+        student = db.scalars(select(Student).where(Student.display_name == name)).one()
+        cycle = db.scalars(select(Cycle).where(Cycle.student_id == student.id)).one()
+        db.execute(delete(StudentVisit).where(StudentVisit.student_id == student.id))
+        for s in cycle.sessions:
+            day = s.scheduled_for + timedelta(days=0 if rng.random() < persona.on_schedule else 1)
+            s.started_at = datetime.combine(day, time(10, rng.randint(0, 40)), tzinfo=UTC)
+            s.completed_at = s.started_at + timedelta(minutes=rng.randint(18, 26))
+            db.add(StudentVisit(student_id=student.id, at=s.started_at))
+        for k in range(persona.returns):
+            day = cycle.start_date + timedelta(days=1 + 2 * k)
+            db.add(StudentVisit(student_id=student.id, at=datetime.combine(day, time(18, 30), tzinfo=UTC)))
+        db.execute(delete(Report).where(Report.cycle_id == cycle.id))
+        db.commit()
+        cycle_id = cycle.id
+    score_and_report(cycle_id)
 
 
 def credentials(

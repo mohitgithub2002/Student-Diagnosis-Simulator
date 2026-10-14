@@ -110,12 +110,12 @@ def build_task(
         levels = range(2, 8) if band == "11-14" else range(3, 9)
         chosen: list[dict] = []
         for lvl in levels:
-            by_concept: dict[str, list[dict]] = defaultdict(list)
+            by_kind: dict[str, list[dict]] = defaultdict(list)  # dots, baskets, number line
             for i in items:
                 if i["level"] == lvl:
-                    by_concept[i["content"]["concept"]].append(i)
-            for concept in sorted(by_concept):
-                chosen += _pick(rng, by_concept[concept], 1)
+                    by_kind[i["content"]["prompt_key"]].append(i)
+            for kind in sorted(by_kind):
+                chosen += _pick(rng, by_kind[kind], 1)
         entry["items"] = chosen[: tdef["items_per_run"]]
     elif task_id == "T11":
         entry["items"] = _pick(rng, items, 2)

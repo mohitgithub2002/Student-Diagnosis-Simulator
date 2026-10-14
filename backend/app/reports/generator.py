@@ -37,8 +37,15 @@ def _select(scores: dict[str, dict], summary: dict) -> tuple[list[dict], list[di
     pressure_confirmed = any(
         p["type"] == "pressure_pattern" and p["evidence"] in SHOWN for p in summary.get("patterns", [])
     )
-    clear = sorted([s for s in usable if s["band"] == "strength"], key=lambda s: -s["score"])
-    relative = sorted([s for s in usable if s["band"] == "typical" and s["score"] > mean], key=lambda s: -s["score"])
+
+    # A language-adjusted score is lifted to avoid misreading English ability; the lift alone never makes a strength.
+    def earned(s: dict) -> bool:
+        return not s["language_adjusted"] or (s.get("raw_score") or 0) > mean
+
+    clear = sorted([s for s in usable if s["band"] == "strength" and earned(s)], key=lambda s: -s["score"])
+    relative = sorted(
+        [s for s in usable if s["band"] == "typical" and s["score"] > mean and earned(s)], key=lambda s: -s["score"]
+    )
     strengths = [{**s, "clear": True} for s in clear] + [{**s, "clear": False} for s in relative]
 
     def can_grow(s: dict) -> bool:
@@ -226,6 +233,7 @@ def scores_for(db: DbSession, cycle: Cycle) -> dict[str, dict]:
             "band": r.relative_band,
             "evidence": r.evidence_level,
             "language_adjusted": r.language_adjusted,
+            "raw_score": r.raw_score,
             "detail": r.detail or {},
         }
         for r in rows

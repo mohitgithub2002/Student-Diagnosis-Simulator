@@ -22,6 +22,7 @@ def scores_and_summary(result: dict) -> tuple[dict, dict]:
             "band": s["band"],
             "evidence": s["evidence"],
             "language_adjusted": s["language_adjusted"],
+            "raw_score": s["raw_score"],
             "detail": {"signals": s["signals"], "cues": s.get("cues", [])},
         }
         for k, s in result["skills"].items()
@@ -77,6 +78,10 @@ def test_language_adjusted_skills_are_never_areas_to_grow(lookup, items_by_id):
     parent = build_parent(scores, summary, "en", "1.0.0", 7, 1)
     adjusted = {k for k, s in scores.items() if s["language_adjusted"]}
     assert adjusted and not adjusted & {a["skill_id"] for a in parent["areas_to_grow"]}
+    mean = summary["profile"]["mean"]
+    for s in parent["strengths"]:
+        if scores[s["skill_id"]]["language_adjusted"]:
+            assert scores[s["skill_id"]]["raw_score"] > mean  # the adjustment alone never makes a strength
     assert any(p["type"] == "language_adjustment" for p in parent["patterns"])
 
 
