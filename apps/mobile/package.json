@@ -5,7 +5,9 @@
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
+    "android": "expo run:android",
+    "prebuild": "expo prebuild --platform android --no-install",
+    "android:release": "cd android && ./gradlew :app:assembleRelease",
     "typecheck": "tsc --noEmit",
     "export:android": "expo export --platform android"
   },

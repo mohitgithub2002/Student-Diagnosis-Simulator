@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppState, Pressable, Text, TextInput, View } from "react-native";
 import {
-  ItemTimer, TOKEN_COLORS, answerFromText, checkAnswer, dotLayout, streamSequence, t, type AllocateContent,
-  type BundleItem, type ChoiceContent, type Draft, type EstimateContent, type FeatureRow, type Lang,
-  type PassageQuestionsContent, type PlanRouteContent, type Presentation, type SequenceContent, type StreamContent,
-  type SurveyContent, type TextResponseContent,
+  ItemTimer, TOKEN_COLORS, checkAnswer, dotLayout, fallbackTextMode, initialTextMode, streamSequence, t, typedOutcome,
+  voiceOutcome, type AllocateContent, type BundleItem, type ChoiceContent, type Draft, type EstimateContent,
+  type FeatureRow, type ItemOutcome, type Lang, type PassageQuestionsContent, type PlanRouteContent, type Presentation,
+  type SequenceContent, type StreamContent, type SurveyContent, type TextMode, type TextResponseContent,
 } from "@sds/task-library";
 import Svg, { Circle } from "react-native-svg";
+import { SdsVoice } from "../../modules/sds-voice";
 import { speak } from "../platform";
-import { Btn, C, FigureView, Opt, P, s } from "../ui";
+import { Btn, C, Countdown, FigureView, LevelBar, Opt, P, s } from "../ui";
+import { NativeVoiceCapture } from "../voice/capture";
+import { installedModel } from "../voice/models";
 
 export type Submit = (d: Omit<Draft, "timing" | "shownAtEpoch"> & { timer: ItemTimer }) => void;
 
@@ -21,6 +24,7 @@ interface Props {
   onIdle: (ms: number) => void;
   aux: Record<string, BundleItem>;
   onFeatures: (rows: FeatureRow[]) => void;
+  voiceAllowed?: boolean;
   previous?: { answer: unknown };
   index: number;
 }
@@ -51,10 +55,11 @@ function Prompt({ text, lang }: { text: string; lang: Lang }) {
 const promptOf = (lang: Lang, c: { prompt?: string; prompt_key?: string }, vars = {}) =>
   c.prompt ?? (c.prompt_key ? t(lang, c.prompt_key, vars) : "");
 
-export function ItemView({ p, lang, aux, onSubmit, onIdle, onFeatures }: { p: Presentation; lang: Lang;
-  aux: Record<string, BundleItem>; onSubmit: Submit; onIdle: (ms: number) => void; onFeatures: (rows: FeatureRow[]) => void }) {
+export function ItemView({ p, lang, aux, onSubmit, onIdle, onFeatures, voiceAllowed }: { p: Presentation; lang: Lang;
+  aux: Record<string, BundleItem>; onSubmit: Submit; onIdle: (ms: number) => void; onFeatures: (rows: FeatureRow[]) => void;
+  voiceAllowed?: boolean }) {
   const props: Props = {
-    item: p.item, taskId: p.entry.task_id, lang, settings: p.settings, onSubmit, onIdle, aux, onFeatures,
+    item: p.item, taskId: p.entry.task_id, lang, settings: p.settings, onSubmit, onIdle, aux, onFeatures, voiceAllowed,
     previous: p.previous ? { answer: p.previous.answer } : undefined, index: p.index,
   };
   switch (p.item.content.kind) {
@@ -384,33 +389,148 @@ function PassageView({ item, lang, settings, onSubmit, onIdle, aux }: Props) {
   );
 }
 
-/** On Android the shell uses typed answers; on-device speech needs a native module (see README). */
-function TextView({ item, lang, onSubmit, onIdle, onFeatures }: Props) {
+/**
+ * Read Aloud (T7), Explain It (T11), Guided Conversation (T22). With the parent's voice consent the answer
+ * can be spoken: the native module keeps audio in memory and hands back only numbers and recognised words,
+ * which become features here with the same shared code as the web. Otherwise (no consent, Expo Go, mic
+ * refused) the student reads silently or types.
+ */
+function TextView({ item, lang, onSubmit, onIdle, onFeatures, voiceAllowed }: Props) {
   const c = item.content as TextResponseContent;
+  const readAloud = c.mode === "read_aloud";
   const timer = useTimer(item.id, onIdle);
+  const canVoice = Boolean(voiceAllowed) && NativeVoiceCapture.supported();
+  const [mode, setMode] = useState<TextMode>(initialTextMode(c, canVoice));
+  const [phase, setPhase] = useState<"idle" | "recording" | "processing">("idle");
+  const [level, setLevel] = useState(0);
   const [text, setText] = useState("");
-  if (c.mode === "read_aloud") {
-    return (
-      <View style={{ gap: 12 }}>
-        <View style={s.passage}><P><Text style={{ fontWeight: "800" }}>{c.title}</Text>{"\n\n"}{c.passage}</P></View>
-        <Btn big title={t(lang, "i_read_it")} onPress={() => onSubmit({ item, answer: null, timer, extra: { mode: "silent" } })} />
-      </View>
-    );
-  }
-  const prefix = c.mode === "explain" ? "t11" : "t22";
+  const [error, setError] = useState<string | null>(null);
+  const capture = useRef<NativeVoiceCapture | null>(null);
+  const done = useRef(false);
+
+  useEffect(() => {
+    if (canVoice) {
+      void installedModel(lang).then((path) => (path ? SdsVoice?.preloadModel(path) : undefined)).catch(() => undefined);
+    }
+    // Android silences the microphone in the background: drop the attempt and let the student start again.
+    const sub = AppState.addEventListener("change", (st) => {
+      if (st !== "active" && capture.current) {
+        capture.current.cancel();
+        capture.current = null;
+        setPhase("idle");
+        setLevel(0);
+      }
+    });
+    return () => {
+      sub.remove();
+      capture.current?.cancel();
+    };
+  }, []); // eslint-disable-line
+
+  const finish = (extra: Record<string, unknown>, skipped = false) => {
+    if (done.current) return;
+    done.current = true;
+    onSubmit({ item, answer: null, timer, skipped, extra });
+  };
+
+  const complete = ({ features, extra, skipped }: ItemOutcome) => {
+    if (features.length) onFeatures(features.map((f) => ({ ...f, task_id: item.task_id, item_id: item.id })));
+    finish(extra, skipped);
+  };
+
+  const micFailed = () => {
+    setError(t(lang, "mic_unavailable"));
+    setMode(fallbackTextMode(c));
+  };
+
+  const startVoice = async () => {
+    setError(null);
+    timer.activity();
+    const cap = new NativeVoiceCapture();
+    cap.onLevel = setLevel;
+    try {
+      await cap.start(lang);
+      capture.current = cap;
+      setPhase("recording");
+    } catch {
+      micFailed();
+    }
+  };
+
+  const stopVoice = async () => {
+    const cap = capture.current;
+    if (!cap) return;
+    capture.current = null;
+    timer.activity();
+    setPhase("processing");
+    const res = await cap.stop();
+    setPhase("idle");
+    setLevel(0);
+    if (res.inputSilent) return micFailed(); // the microphone is switched off in Android's privacy settings
+    complete(voiceOutcome(c, res));
+  };
+
+  const submitTyped = () => {
+    const outcome = typedOutcome(c, text);
+    setText(""); // the words themselves are discarded
+    complete(outcome);
+  };
+
+  const skip = c.mode === "converse"
+    ? <Btn kind="ghost" title={t(lang, "skip")} onPress={() => finish({ mode: "skipped" }, true)} />
+    : null;
+
   return (
     <View style={{ gap: 12 }}>
-      <Prompt text={c.prompt ?? ""} lang={lang} />
-      <TextInput style={[s.input, { minHeight: 140, textAlignVertical: "top" }]} multiline value={text}
-        onChangeText={(v) => { timer.activity(); setText(v); }} placeholder={t(lang, "type_here")} />
-      <View style={s.row}>
-        {c.mode === "converse" && <Btn kind="ghost" title={t(lang, "skip")} onPress={() => onSubmit({ item, answer: null, timer, skipped: true, extra: { mode: "skipped" } })} />}
-        <Btn big title={t(lang, "done")} onPress={() => {
-          onFeatures(answerFromText(prefix, text, "text", c.keywords).map((f) => ({ ...f, task_id: item.task_id, item_id: item.id })));
-          setText("");
-          onSubmit({ item, answer: null, timer, skipped: !text.trim(), extra: { mode: "typed" } });
-        }} />
-      </View>
+      {readAloud
+        ? <View style={s.passage}><P><Text style={{ fontWeight: "800" }}>{c.title}</Text>{"\n\n"}{c.passage}</P></View>
+        : phase === "idle" ? <Prompt text={c.prompt ?? ""} lang={lang} /> : <P big>{c.prompt}</P>}
+      {error && <Text style={{ color: C.danger }}>{error}</Text>}
+
+      {mode === "choose" && (
+        <View style={s.row}>
+          <Btn big title={t(lang, "speak")} onPress={() => setMode("voice")} />
+          <Btn big kind="secondary" title={t(lang, "type_instead")} onPress={() => setMode("typed")} />
+          {skip}
+        </View>
+      )}
+
+      {mode === "voice" && (
+        <View style={{ gap: 10 }}>
+          <P muted>{t(lang, "voice_note")}</P>
+          <LevelBar level={level} />
+          {phase === "idle" && (
+            <View style={s.row}>
+              <Btn big title={t(lang, "start_speaking")} onPress={startVoice} />
+              {!readAloud && <Btn kind="secondary" title={t(lang, "type_instead")} onPress={() => setMode("typed")} />}
+            </View>
+          )}
+          {phase === "recording" && (
+            <View style={s.row}>
+              <Text style={{ color: C.grow, fontWeight: "800" }}>{t(lang, "listening")}</Text>
+              {/* Explain and converse are timed; read aloud stops itself at the time limit without a visible clock. */}
+              <Countdown seconds={c.time_limit_s} onEnd={stopVoice} hidden={readAloud}
+                label={(sec) => t(lang, "seconds_left", { s: sec })} />
+              <Btn big title={t(lang, readAloud ? "done" : "stop")} onPress={stopVoice} />
+            </View>
+          )}
+          {phase === "processing" && <P muted>{t(lang, "voice.processing")}</P>}
+        </View>
+      )}
+
+      {mode === "typed" && (
+        <View style={{ gap: 10 }}>
+          <TextInput style={[s.input, { minHeight: 140, textAlignVertical: "top" }]} multiline value={text}
+            onChangeText={(v) => { timer.activity(); setText(v); }} placeholder={t(lang, "type_here")} />
+          <View style={s.row}>
+            <Countdown seconds={c.time_limit_s + 60} onEnd={submitTyped} label={(sec) => t(lang, "seconds_left", { s: sec })} />
+            {skip}
+            <Btn big title={t(lang, "done")} onPress={submitTyped} />
+          </View>
+        </View>
+      )}
+
+      {mode === "silent" && <Btn big title={t(lang, "i_read_it")} onPress={() => finish({ mode: "silent" })} />}
     </View>
   );
 }

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import Svg, { Circle, Defs, Path, Pattern, Rect } from "react-native-svg";
 import { figurePrims, type Figure } from "@sds/task-library";
@@ -43,6 +43,41 @@ export function H1({ children }: { children: ReactNode }) {
 
 export function P({ children, muted, big }: { children: ReactNode; muted?: boolean; big?: boolean }) {
   return <Text style={[s.p, muted && { color: C.muted }, big && { fontSize: 20, fontWeight: "700", color: C.brand }]}>{children}</Text>;
+}
+
+/** Counts down and calls onEnd once at zero. Hidden countdowns still run (a safety stop without a visible clock). */
+export function Countdown({ seconds, onEnd, label, hidden }: {
+  seconds: number; onEnd: () => void; label: (s: number) => string; hidden?: boolean;
+}) {
+  const [left, setLeft] = useState(seconds);
+  const endRef = useRef(onEnd);
+  endRef.current = onEnd;
+  useEffect(() => {
+    const start = Date.now();
+    const id = setInterval(() => {
+      const remaining = Math.max(0, seconds - (Date.now() - start) / 1000);
+      setLeft(remaining);
+      if (remaining <= 0) {
+        clearInterval(id);
+        endRef.current();
+      }
+    }, 250);
+    return () => clearInterval(id);
+  }, [seconds]);
+  if (hidden) return null;
+  return <Text style={{ color: C.muted, fontWeight: "700" }}>{label(Math.ceil(left))}</Text>;
+}
+
+/** Microphone level meter on a decibel scale (-60 dB to 0 dB), so quiet Android input still moves it. */
+export function LevelBar({ level }: { level: number }) {
+  const db = level > 0 ? 20 * Math.log10(level) : -100;
+  const pct = Math.max(0, Math.min(100, ((db + 60) / 60) * 100));
+  return (
+    <View style={{ height: 12, borderRadius: 6, backgroundColor: C.line, overflow: "hidden" }}
+      accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <View style={{ width: `${pct}%`, height: "100%", backgroundColor: C.brand2 }} />
+    </View>
+  );
 }
 
 /** Figures from the shared geometry; stripes and dots are patterns, so colour is never the only cue. */

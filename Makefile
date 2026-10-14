@@ -1,5 +1,5 @@
 # Common developer commands. Requires: uv, node 20+, Postgres 16, Redis.
-.PHONY: install db test lint api worker web demo e2e mobile-check vectors
+.PHONY: install db test lint api worker web demo e2e mobile-check android-apk vectors
 
 install:
 	cd backend && uv sync
@@ -34,3 +34,7 @@ e2e:
 
 mobile-check:
 	cd apps/mobile && npm install && npx tsc --noEmit && npx expo export --platform android
+
+# Needs the Android SDK and JDK 17+. The APK is in apps/mobile/android/app/build/outputs/apk/release/.
+android-apk:
+	cd apps/mobile && npm install && npm run prebuild && npm run android:release

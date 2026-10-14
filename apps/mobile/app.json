@@ -8,11 +8,19 @@
     "platforms": ["android"],
     "android": {
       "package": "in.revenuelogy.sds",
-      "permissions": [],
-      "blockedPermissions": ["android.permission.CAMERA"]
+      "allowBackup": false,
+      "permissions": ["android.permission.RECORD_AUDIO"],
+      "blockedPermissions": [
+        "android.permission.CAMERA",
+        "android.permission.VIBRATE",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ]
     },
     "extra": {
-      "apiUrl": "http://10.0.2.2:8000"
+      "apiUrl": "http://10.0.2.2:8000",
+      "modelsUrl": "http://10.0.2.2:5173/models"
     }
   }
 }
