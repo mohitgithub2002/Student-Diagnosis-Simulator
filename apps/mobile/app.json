@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "Student Diagnostic Simulator",
+    "slug": "student-diagnostic-simulator",
+    "version": "0.1.0",
+    "orientation": "default",
+    "userInterfaceStyle": "light",
+    "platforms": ["android"],
+    "android": {
+      "package": "in.revenuelogy.sds",
+      "permissions": [],
+      "blockedPermissions": ["android.permission.CAMERA"]
+    },
+    "extra": {
+      "apiUrl": "http://10.0.2.2:8000"
+    }
+  }
+}
