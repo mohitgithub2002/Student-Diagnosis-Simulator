@@ -2,8 +2,9 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   ItemTimer, MemoryStorage, OfflineBuffer, SessionRunner, Staircase, alignErrors, answerFromText, checkAnswer,
-  detectSpeech, dotLayout, figurePrims, mulberry32, readAloudFromVad, readAloudFromWords, streamSequence, t,
-  textFeatures, type Bundle, type BundleItem, type ItemEvent, type Op,
+  collectVoskResults, detectSpeech, dotLayout, figurePrims, framesFromLevels, initialTextMode, mulberry32,
+  readAloudFromVad, readAloudFromWords, streamSequence, t, textFeatures, typedOutcome, voiceOutcome,
+  type Bundle, type BundleItem, type ItemEvent, type Op, type TextResponseContent,
 } from "../src";
 
 const root = new URL("../../../shared/", import.meta.url);
@@ -226,6 +227,69 @@ describe("text and voice features", () => {
     const f = Object.fromEntries(readAloudFromWords("The red kite flew", words).map((x) => [x.name, x.value]));
     expect(f["t7.error_rate"]).toBe(0.25);
     expect(f["t7.self_corrections"]).toBeGreaterThan(0);
+  });
+});
+
+describe("voice answers on web and Android", () => {
+  const readAloud: TextResponseContent = { kind: "text_response", mode: "read_aloud", passage: "The red kite flew", word_count: 4, time_limit_s: 150 };
+  const explain: TextResponseContent = { kind: "text_response", mode: "explain", prompt: "Why?", keywords: ["bell"], time_limit_s: 60 };
+  const converse: TextResponseContent = { kind: "text_response", mode: "converse", prompt: "Tell me", time_limit_s: 60 };
+  const speech = () => {
+    const frames = [];
+    for (let t = 0; t < 4000; t += 20) frames.push({ t, rms: (t > 600 && t < 1800) || (t > 2600 && t < 3600) ? 0.2 : 0.005 });
+    return detectSpeech(frames);
+  };
+  const silence = detectSpeech(framesFromLevels(new Array(100).fill(0)));
+  const byName = (rows: { name: string; value: number; channel: string }[]) => Object.fromEntries(rows.map((x) => [x.name, x]));
+
+  it("collects Vosk results from strings and objects, skipping bad entries", () => {
+    const out = collectVoskResults([
+      JSON.stringify({ result: [{ word: "the", start: 0.5, end: 0.7, conf: 1 }, { word: "kite", start: 0.8, end: 1.1 }], text: "the kite" }),
+      "{not json",
+      { text: "" },
+      { result: [{ word: "flew", start: 1.5, end: 1.9 }, { word: 7 as unknown as string, start: 2, end: 2.1 }], text: " flew " },
+      JSON.stringify(null),
+    ]);
+    expect(out.words.map((w) => w.word)).toEqual(["the", "kite", "flew"]);
+    expect(out.words[0]).toEqual({ word: "the", start: 0.5, end: 0.7 });
+    expect(out.text).toBe("the kite flew");
+  });
+  it("turns evenly spaced levels into timestamped frames", () => {
+    expect(framesFromLevels([0.1, 0.2, 0.3], 20)).toEqual([{ t: 0, rms: 0.1 }, { t: 20, rms: 0.2 }, { t: 40, rms: 0.3 }]);
+  });
+  it("chooses the starting mode from the task and voice availability", () => {
+    expect(initialTextMode(readAloud, true)).toBe("voice");
+    expect(initialTextMode(readAloud, false)).toBe("silent");
+    expect(initialTextMode(explain, true)).toBe("choose");
+    expect(initialTextMode(converse, false)).toBe("typed");
+  });
+  it("read aloud uses words when speech-to-text ran, energy timing otherwise", () => {
+    const words = ["the", "red", "kite", "flew"].map((w, i) => ({ word: w, start: 0.6 + i * 0.4, end: 0.9 + i * 0.4 }));
+    const withWords = voiceOutcome(readAloud, { vad: speech(), words, transcript: "the red kite flew" });
+    expect(byName(withWords.features)["t7.error_rate"]).toMatchObject({ value: 0, channel: "voice" });
+    expect(withWords.extra).toEqual({ mode: "voice", stt: true });
+    expect(withWords.skipped).toBe(false);
+    const energyOnly = voiceOutcome(readAloud, { vad: speech(), words: null, transcript: null });
+    expect(byName(energyOnly.features)["t7.wpm"].channel).toBe("voice_vad");
+    expect(byName(energyOnly.features)["t7.error_rate"]).toBeUndefined();
+    expect(energyOnly.extra).toEqual({ mode: "voice", stt: false });
+  });
+  it("spoken answers keep timing with the transcript; silence counts as skipped", () => {
+    const spoken = byName(voiceOutcome(explain, { vad: speech(), words: [], transcript: "first the bell rings then we go" }).features);
+    expect(spoken["t11.keyword_share"]).toMatchObject({ value: 1, channel: "voice" });
+    expect(spoken["t11.speech_start_ms"].value).toBe(620);
+    expect(spoken["t11.pause_rate"]).toBeDefined();
+    const energy = voiceOutcome(converse, { vad: speech(), words: null, transcript: null });
+    expect(byName(energy.features)["t22.word_count"].channel).toBe("voice_vad");
+    const quiet = voiceOutcome(converse, { vad: silence, words: null, transcript: null });
+    expect(quiet.skipped).toBe(true);
+    expect(quiet.features).toEqual([]);
+  });
+  it("typed answers use the text channel", () => {
+    const typed = typedOutcome(explain, "The bell rings");
+    expect(typed.features.every((f) => f.channel === "text" && f.name.startsWith("t11."))).toBe(true);
+    expect(typed).toMatchObject({ extra: { mode: "typed" }, skipped: false });
+    expect(typedOutcome(converse, "   ").skipped).toBe(true);
   });
 });
 

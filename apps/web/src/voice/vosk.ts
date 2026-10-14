@@ -1,15 +1,14 @@
-import type { Word } from "@sds/task-library";
+import { collectVoskResults, voskModelFor, type VoskJson, type Word } from "@sds/task-library";
 
 /**
  * Optional on-device speech-to-text with Vosk (WebAssembly). Models are not bundled: run
  * scripts/fetch-vosk-models.sh to place them under public/models/. Without a model the app still
  * measures speech timing with the energy detector; only word-level features are skipped.
  */
-const MODELS: Record<string, string> = {
-  en: "/models/vosk-model-small-en-in-0.4.tar.gz",
-  hi: "/models/vosk-model-small-hi-0.22.tar.gz",
-  hinglish: "/models/vosk-model-small-hi-0.22.tar.gz",
-};
+function modelUrl(language: string): string | null {
+  const name = voskModelFor(language);
+  return name ? `/models/${name}.tar.gz` : null;
+}
 
 export interface Recognizer {
   accept(buffer: AudioBuffer): void;
@@ -29,7 +28,8 @@ async function modelAvailable(url: string): Promise<boolean> {
 }
 
 async function loadModel(language: string): Promise<any | null> {
-  const url = MODELS[language] ?? MODELS.en;
+  const url = modelUrl(language);
+  if (!url) return null;
   if (!modelCache.has(url)) {
     modelCache.set(url, (async () => {
       if (!(await modelAvailable(url))) return null;
@@ -50,13 +50,10 @@ export async function loadRecognizer(language: string, sampleRate: number): Prom
   if (!model) return null;
   const rec = new model.KaldiRecognizer(sampleRate);
   rec.setWords(true);
-  const words: Word[] = [];
-  const texts: string[] = [];
+  const results: VoskJson[] = [];
   let resolveFinal: (() => void) | null = null;
   rec.on("result", (msg: any) => {
-    const result = msg.result;
-    if (result?.result) words.push(...result.result.map((w: any) => ({ word: w.word, start: w.start, end: w.end })));
-    if (result?.text) texts.push(result.text);
+    if (msg.result) results.push(msg.result);
     resolveFinal?.();
   });
   return {
@@ -69,9 +66,12 @@ export async function loadRecognizer(language: string, sampleRate: number): Prom
     },
     finish: () =>
       new Promise((resolve) => {
+        let finished = false;
         const done = () => {
+          if (finished) return;
+          finished = true;
           rec.remove();
-          resolve({ words, text: texts.join(" ") });
+          resolve(collectVoskResults(results));
         };
         resolveFinal = done;
         rec.retrieveFinalResult();

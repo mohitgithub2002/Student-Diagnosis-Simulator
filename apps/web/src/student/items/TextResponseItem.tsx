@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  answerFromText, answerFromVad, readAloudFromVad, readAloudFromWords, t, type FeatureRow, type TextResponseContent,
+  fallbackTextMode, initialTextMode, t, typedOutcome, voiceOutcome, type ItemOutcome, type TextMode, type TextResponseContent,
 } from "@sds/task-library";
 import { Speaker } from "../../components/ui";
 import { VoiceCapture } from "../../voice/capture";
 import { Countdown, useItemTimer, type ItemProps } from "./common";
-
-type Mode = "choose" | "voice" | "typed" | "silent";
 
 /**
  * Read Aloud (T7), Explain It (T11), Guided Conversation (T22). Voice is processed on the device; the
@@ -17,7 +15,7 @@ export function TextResponseItem({ item, lang, onSubmit, onIdle, voiceAllowed, o
   const readAloud = c.mode === "read_aloud";
   const timer = useItemTimer(item.id, onIdle);
   const canVoice = Boolean(voiceAllowed) && VoiceCapture.supported();
-  const [mode, setMode] = useState<Mode>(canVoice ? (readAloud ? "voice" : "choose") : readAloud ? "silent" : "typed");
+  const [mode, setMode] = useState<TextMode>(initialTextMode(c, canVoice));
   const [recording, setRecording] = useState(false);
   const [level, setLevel] = useState(0);
   const [text, setText] = useState("");
@@ -25,18 +23,18 @@ export function TextResponseItem({ item, lang, onSubmit, onIdle, voiceAllowed, o
   const capture = useRef<VoiceCapture | null>(null);
   const startedAt = useRef(0);
   const done = useRef(false);
-  const prefix = c.mode === "explain" ? "t11" : "t22";
 
   useEffect(() => () => capture.current?.cancel(), []);
-
-  const emit = (rows: { name: string; value: number; channel: FeatureRow["channel"] }[]) => {
-    if (rows.length) onFeatures?.(rows.map((r) => ({ ...r, task_id: item.task_id, item_id: item.id })));
-  };
 
   const finish = (extra: Record<string, unknown>, skipped = false) => {
     if (done.current) return;
     done.current = true;
     onSubmit({ item, answer: null, timer, skipped, extra });
+  };
+
+  const complete = ({ features, extra, skipped }: ItemOutcome) => {
+    if (features.length) onFeatures?.(features.map((r) => ({ ...r, task_id: item.task_id, item_id: item.id })));
+    finish(extra, skipped);
   };
 
   const startVoice = async () => {
@@ -51,7 +49,7 @@ export function TextResponseItem({ item, lang, onSubmit, onIdle, voiceAllowed, o
       setRecording(true);
     } catch {
       setError(t(lang, "mic_unavailable"));
-      setMode(readAloud ? "silent" : "typed");
+      setMode(fallbackTextMode(c));
     }
   };
 
@@ -62,22 +60,13 @@ export function TextResponseItem({ item, lang, onSubmit, onIdle, voiceAllowed, o
     setRecording(false);
     const res = await cap.stop();
     capture.current = null;
-    if (readAloud) {
-      emit(res.words?.length ? readAloudFromWords(c.passage ?? "", res.words) : readAloudFromVad(c.word_count ?? 0, res.vad));
-    } else if (res.transcript) {
-      emit(answerFromText(prefix, res.transcript, "voice", c.keywords, {
-        speech_start_ms: res.vad.speech_start_ms ?? undefined, pauses: res.vad.pause_count,
-      }));
-    } else {
-      emit(answerFromVad(prefix, res.vad));
-    }
-    finish({ mode: "voice", stt: Boolean(res.words?.length) }, !readAloud && res.vad.speech_start_ms === null);
+    complete(voiceOutcome(c, res));
   };
 
   const submitTyped = () => {
-    emit(answerFromText(prefix, text, "text", c.keywords));
+    const outcome = typedOutcome(c, text);
     setText(""); // the words themselves are discarded
-    finish({ mode: "typed" }, text.trim().length === 0);
+    complete(outcome);
   };
 
   const prompt = readAloud ? t(lang, "i_read_it") : c.prompt ?? "";

@@ -1,18 +1,13 @@
-import { detectSpeech, rms, type Frame, type VadResult, type Word } from "@sds/task-library";
+import { detectSpeech, rms, type CaptureResult, type Frame, type Word } from "@sds/task-library";
 import { loadRecognizer, type Recognizer } from "./vosk";
+
+export type { CaptureResult };
 
 /**
  * On-device voice capture (FR-11). Audio is read frame by frame from the microphone into memory, turned
  * into numbers (energy levels and, when a Vosk model is installed, recognised words with timings) and then
  * dropped. Nothing is recorded, stored or uploaded; there is no MediaRecorder anywhere in the app.
  */
-export interface CaptureResult {
-  vad: VadResult;
-  words: Word[] | null; // null when no speech-to-text model is available
-  transcript: string | null; // kept in memory only so features can be computed, then discarded
-  durationMs: number;
-}
-
 export class VoiceCapture {
   private ctx: AudioContext | null = null;
   private stream: MediaStream | null = null;

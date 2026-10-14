@@ -48,6 +48,7 @@ const en: Dict = {
   voice_note: "Your voice is turned into numbers on this device. Nothing is recorded or uploaded.",
   type_here: "Type your answer here…", seconds_left: "{s} seconds left", i_read_it: "I've finished reading",
   listening: "Listening…", mic_unavailable: "The microphone isn't available, so you can type instead.",
+  "voice.preparing": "Getting voice ready… {p}%", "voice.processing": "Working it out…",
   "steps.find": "Which step has the mistake?", "review.title": "Look back at your answers",
   "review.text": "You can keep your answer or change it.", keep: "Keep",
   // warm-up
@@ -106,6 +107,7 @@ const hi: Dict = {
   voice_note: "तुम्हारी आवाज़ इसी डिवाइस पर संख्याओं में बदली जाती है। कुछ भी रिकॉर्ड या अपलोड नहीं होता।",
   type_here: "अपना उत्तर यहाँ लिखो…", seconds_left: "{s} सेकंड बचे", i_read_it: "मैंने पढ़ लिया",
   listening: "सुन रहे हैं…", mic_unavailable: "माइक्रोफ़ोन उपलब्ध नहीं है, इसलिए लिखकर उत्तर दो।",
+  "voice.preparing": "आवाज़ तैयार हो रही है… {p}%", "voice.processing": "समझ रहे हैं…",
   "steps.find": "किस कदम में गलती है?", "review.title": "अपने उत्तर फिर से देखो",
   "review.text": "तुम अपना उत्तर रख सकते हो या बदल सकते हो।", keep: "रखें",
   "warmup.title": "वॉर्म-अप", "warmup.language": "तुम किस भाषा में खेलना चाहते हो?",
@@ -150,6 +152,7 @@ const hinglish: Dict = {
   "lesson.questions": "Seekhi baat use karo", speak: "Bolo", type_instead: "Type karo",
   voice_note: "Tumhari awaaz isi device par numbers mein badli jaati hai. Kuch record ya upload nahi hota.",
   type_here: "Apna answer yahan likho…", seconds_left: "{s} second bache", i_read_it: "Maine padh liya",
+  "voice.preparing": "Awaaz ready ho rahi hai… {p}%", "voice.processing": "Samajh rahe hain…",
   "steps.find": "Kis step mein galti hai?", "review.title": "Apne answers phir se dekho",
   "review.text": "Apna answer rakh sakte ho ya badal sakte ho.", keep: "Rakho",
   "warmup.language": "Tum kis bhasha mein khelna chahte ho?", "warmup.audio": "Kya tumhe yeh sunai de raha hai?",

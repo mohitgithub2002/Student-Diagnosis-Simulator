@@ -11,3 +11,6 @@ export * from "./buffer";
 export * from "./api";
 export * from "./voice/vad";
 export * from "./voice/features";
+export * from "./voice/capture";
+export * from "./voice/items";
+export * from "./voice/vosk";
