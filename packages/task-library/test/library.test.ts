@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   ItemTimer, MemoryStorage, OfflineBuffer, SessionRunner, Staircase, alignErrors, answerFromText, checkAnswer,
   collectVoskResults, detectSpeech, dotLayout, figurePrims, framesFromLevels, initialTextMode, mulberry32,
-  readAloudFromVad, readAloudFromWords, streamSequence, t, textFeatures, typedOutcome, voiceOutcome,
+  readAloudFromVad, readAloudFromWords, streamSequence, t, textFeatures, typedOutcome, voiceOutcome, voskModelFor,
   type Bundle, type BundleItem, type ItemEvent, type Op, type TextResponseContent,
 } from "../src";
 
@@ -253,6 +253,14 @@ describe("voice answers on web and Android", () => {
     expect(out.words.map((w) => w.word)).toEqual(["the", "kite", "flew"]);
     expect(out.words[0]).toEqual({ word: "the", start: 0.5, end: 0.7 });
     expect(out.text).toBe("the kite flew");
+  });
+  it("uses no speech model for Hinglish, whose Roman script the Hindi model cannot write", () => {
+    expect(voskModelFor("en")).toBe("vosk-model-small-en-in-0.4");
+    expect(voskModelFor("hi")).toBe("vosk-model-small-hi-0.22");
+    expect(voskModelFor("hinglish")).toBeNull();
+    // What the Hindi model would produce for a Roman-script passage: every word counts as an error.
+    const words = ["रविवार", "की", "सुबह"].map((w, i) => ({ word: w, start: i * 0.5, end: i * 0.5 + 0.4 }));
+    expect(byName(readAloudFromWords("Ravivaar ki subah", words))["t7.error_rate"].value).toBe(1);
   });
   it("turns evenly spaced levels into timestamped frames", () => {
     expect(framesFromLevels([0.1, 0.2, 0.3], 20)).toEqual([{ t: 0, rms: 0.1 }, { t: 20, rms: 0.2 }, { t: 40, rms: 0.3 }]);

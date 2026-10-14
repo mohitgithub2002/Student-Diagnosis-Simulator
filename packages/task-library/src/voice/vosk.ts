@@ -4,11 +4,13 @@ import type { Word } from "./features";
 /**
  * Offline Vosk speech models per UI language. The web app loads `<name>.tar.gz` and the Android app
  * installs `<name>.zip`; both are served from the app's `/models/` folder (scripts/fetch-vosk-models.sh).
+ *
+ * Hinglish has no model: the Hindi model writes Devanagari while Hinglish passages and keywords are in
+ * Roman script, so every word would count as a reading error. Hinglish answers use energy timing only.
  */
 export const VOSK_MODELS: Partial<Record<Lang, string>> = {
   en: "vosk-model-small-en-in-0.4",
   hi: "vosk-model-small-hi-0.22",
-  hinglish: "vosk-model-small-hi-0.22",
 };
 
 /** The model for a language, or null when that language uses energy-only voice features. */
