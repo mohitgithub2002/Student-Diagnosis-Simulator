@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: sds
+          POSTGRES_PASSWORD: sds
+          POSTGRES_DB: sds_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U sds" --health-interval 5s --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      SDS_DATABASE_URL: postgresql+psycopg://sds:sds@localhost:5432/sds_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - name: System libraries for PDF reports
+        run: sudo apt-get update && sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0
+      - run: uv sync
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest
+      - name: Migrations match the models
+        run: |
+          PGPASSWORD=sds psql -h localhost -U sds -d sds_test -c "CREATE DATABASE sds_migrate"
+          SDS_DATABASE_URL=postgresql+psycopg://sds:sds@localhost:5432/sds_migrate uv run alembic upgrade head
+          SDS_DATABASE_URL=postgresql+psycopg://sds:sds@localhost:5432/sds_migrate uv run alembic check
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck -w packages/task-library
+      - run: npm test -w packages/task-library
+      - run: npm run build -w apps/web
+
+  mobile:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx expo export --platform android --output-dir /tmp/android-bundle
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: [backend, web]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: sds
+          POSTGRES_PASSWORD: sds
+          POSTGRES_DB: sds
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U sds" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SDS_DATABASE_URL: postgresql+psycopg://sds:sds@localhost:5432/sds
+      SDS_RELAX_SCHEDULE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: sudo apt-get update && sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0
+      - name: Demo data and API
+        working-directory: backend
+        run: |
+          uv sync
+          uv run python -m app.cli demo
+          nohup uv run uvicorn app.main:app --port 8000 > api.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf localhost:8000/api/health && break; sleep 1; done
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/web
+      - run: npx playwright test --reporter=line
+        working-directory: apps/web

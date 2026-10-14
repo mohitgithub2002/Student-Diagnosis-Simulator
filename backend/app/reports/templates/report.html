@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="{{ r.language }}">
+<head>
+<meta charset="utf-8">
+<title>{{ r.title }}</title>
+<style>
+  @font-face { font-family: "Noto Sans"; src: url("{{ fonts }}/noto-sans-latin-400-normal.woff"); font-weight: 400; }
+  @font-face { font-family: "Noto Sans"; src: url("{{ fonts }}/noto-sans-latin-700-normal.woff"); font-weight: 700; }
+  @font-face { font-family: "Noto Sans Devanagari"; src: url("{{ fonts }}/noto-sans-devanagari-devanagari-400-normal.woff"); font-weight: 400; }
+  @font-face { font-family: "Noto Sans Devanagari"; src: url("{{ fonts }}/noto-sans-devanagari-devanagari-700-normal.woff"); font-weight: 700; }
+  @page { size: A4; margin: 18mm 16mm 20mm; @bottom-center { content: "{{ ui.scoring_version }} {{ r.scoring_version }} · " counter(page) "/" counter(pages); font-size: 8pt; color: #6b6b6b; } }
+  body { font-family: "Noto Sans", "Noto Sans Devanagari", sans-serif; color: #1f2328; font-size: 10.5pt; line-height: 1.5; }
+  h1 { font-size: 20pt; margin: 0 0 4pt; color: #17324d; }
+  h2 { font-size: 13pt; margin: 18pt 0 6pt; color: #17324d; border-bottom: 1.5pt solid #d8e2ec; padding-bottom: 3pt; }
+  .intro { color: #444; margin-bottom: 8pt; }
+  .card { border: 1pt solid #d8e2ec; border-left: 4pt solid #2f6f9f; border-radius: 4pt; padding: 7pt 10pt; margin: 6pt 0; page-break-inside: avoid; }
+  .card.grow { border-left-color: #b7791f; }
+  .card.pattern { border-left-color: #6b46c1; }
+  .card h3 { margin: 0 0 2pt; font-size: 11pt; }
+  .tag { display: inline-block; font-size: 8pt; padding: 1pt 5pt; border-radius: 8pt; background: #eef3f8; color: #17324d; margin-left: 4pt; }
+  .evidence { font-size: 9pt; color: #555; margin-top: 3pt; }
+  .actions { margin-top: 4pt; font-size: 9.5pt; }
+  .actions b { color: #17324d; }
+  table { width: 100%; border-collapse: collapse; font-size: 9pt; }
+  td, th { text-align: left; padding: 3pt 5pt; border-bottom: 0.5pt solid #e3e8ee; }
+  th { color: #17324d; }
+  .band-strength { font-weight: 700; }
+  .band-grow { font-style: italic; }
+  .disclaimer { margin-top: 18pt; padding: 8pt 10pt; background: #f6f8fa; border-radius: 4pt; font-size: 9pt; }
+  .student-big { font-size: 13pt; }
+</style>
+</head>
+<body>
+<h1>{{ r.title }}</h1>
+<p class="intro">{{ r.intro }}</p>
+
+<h2>{{ ui.strengths }}</h2>
+{% for s in r.strengths %}
+<div class="card">
+  <h3>{{ s.title }}{% if s.clear %}<span class="tag">{{ ui.clear }}</span>{% endif %}{% if s.evidence_level %}<span class="tag">{{ ui.evidence_level[s.evidence_level] }}</span>{% endif %}</h3>
+  <div class="{% if r.audience == 'student' %}student-big{% endif %}">{{ s.text }}</div>
+  {% if s.evidence_line %}<div class="evidence">{{ ui.evidence }}: {{ s.evidence_line }}</div>{% endif %}
+</div>
+{% else %}<p>{{ ui.no_strengths }}</p>{% endfor %}
+
+<h2>{{ ui.areas }}</h2>
+{% for a in r.areas_to_grow %}
+<div class="card grow">
+  <h3>{{ a.title }}{% if a.evidence_level %}<span class="tag">{{ ui.evidence_level[a.evidence_level] }}</span>{% endif %}</h3>
+  <div class="{% if r.audience == 'student' %}student-big{% endif %}">{{ a.text }}</div>
+  {% if a.evidence_line %}<div class="evidence">{{ ui.evidence }}: {{ a.evidence_line }}</div>{% endif %}
+  {% if a.action_home %}<div class="actions"><b>{{ ui.home }}:</b> {{ a.action_home }}<br><b>{{ ui.school }}:</b> {{ a.action_school }}</div>{% endif %}
+</div>
+{% else %}<p>{{ ui.no_areas }}</p>{% endfor %}
+
+{% if r.audience == 'student' %}
+  {% if r.action %}<h2>{{ ui.action }}</h2><div class="card"><div class="student-big">{{ r.action }}</div></div>{% endif %}
+  {% if r.note %}<div class="card pattern"><div class="student-big">{{ r.note }}</div></div>{% endif %}
+{% endif %}
+
+{% if r.patterns %}
+<h2>{{ ui.patterns }}</h2>
+{% for p in r.patterns %}
+<div class="card pattern">
+  <div>{{ p.text }}<span class="tag">{{ ui.evidence_level[p.evidence_level] }}</span></div>
+  <div class="evidence">{{ ui.evidence }}: {{ p.evidence_line }}</div>
+</div>
+{% endfor %}
+{% endif %}
+
+{% if r.root_causes and r.root_causes['items'] %}
+<h2>{{ ui.root_causes }}</h2>
+<p>{{ r.root_causes.summary }}</p>
+<table>
+  {% for t in r.root_causes['items'] %}<tr><th>{{ t.label }} ({{ t.count }})</th><td>{{ t.suggestion }}</td></tr>{% endfor %}
+</table>
+{% endif %}
+
+{% if r.layers %}
+<h2>{{ ui.layers }}</h2>
+<table>
+  {% for layer in r.layers %}
+    <tr><th colspan="2">{{ layer.title }}</th></tr>
+    {% for s in layer.skills %}
+      <tr><td>{{ s.title }}{% if s.language_adjusted %} *{% endif %}</td><td class="band-{{ s.band }}">{{ s.band_label }}</td></tr>
+    {% endfor %}
+  {% endfor %}
+</table>
+{% endif %}
+
+{% if r.early_signals and r.early_signals.count %}<h2>{{ ui.early }}</h2><p>{{ r.early_signals.text }}</p>{% endif %}
+
+{% if r.notes %}
+<h2>{{ ui.notes }}</h2>
+<ul>{% for n in r.notes %}<li>{{ n.text }}</li>{% endfor %}</ul>
+{% endif %}
+
+<div class="disclaimer">{{ r.disclaimer }}</div>
+</body>
+</html>

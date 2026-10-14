@@ -1,0 +1,27 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'in.revenuelogy.sds'
+version = '0.1.0'
+
+expoModule {
+  // A local module inside the app, never published as a package.
+  canBePublished false
+}
+
+android {
+  namespace "expo.modules.sdsvoice"
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+    consumerProguardFiles "consumer-rules.pro"
+  }
+}
+
+dependencies {
+  // Offline speech-to-text (Apache 2.0). Brings JNA (net.java.dev.jna:jna, aar) through its Gradle metadata.
+  implementation "com.alphacephei:vosk-android:0.3.75"
+  testImplementation "junit:junit:4.13.2"
+}
